@@ -83,7 +83,13 @@ describe("trace-rote-exec", () => {
   });
 
   it("fails closed when a step has no tool stub", () => {
+    let httpCalls = 0;
     const exec = compileExec([
+      {
+        tool: "http.get",
+        args: { url: "https://api.example.com/n" },
+        markers: [],
+      },
       {
         tool: "ghost",
         args: {},
@@ -92,9 +98,35 @@ describe("trace-rote-exec", () => {
     ]);
     expect(() =>
       assertReplay(exec, {
-        stubs: {},
+        stubs: {
+          "http.get": () => {
+            httpCalls += 1;
+            return { status: 200 };
+          },
+        },
         expectedOutputs: [],
       }),
     ).toThrow('Missing stub for tool "ghost"');
+    expect(httpCalls).toBe(0);
+    const inherited = compileExec([{ tool: "constructor", args: {}, markers: [] }]);
+    expect(() =>
+      assertReplay(inherited, {
+        stubs: {},
+        expectedOutputs: [],
+      }),
+    ).toThrow('Missing stub for tool "constructor"');
+  });
+
+  it("keeps two identical successes as separate steps", () => {
+    const steps = deriveSteps(
+      captureTrace([
+        { tool: "ls", args: { path: "." }, ok: true },
+        { tool: "ls", args: { path: "." }, ok: true },
+      ]),
+    );
+    expect(steps).toEqual([
+      { tool: "ls", args: { path: "." }, markers: [] },
+      { tool: "ls", args: { path: "." }, markers: [] },
+    ] satisfies Step[]);
   });
 });

@@ -264,19 +264,30 @@ function outputsEqual(actual: readonly Json[], expected: readonly Json[]): boole
   });
 }
 
+function stubFor(
+  stubs: FixtureArgs["stubs"],
+  tool: string,
+): (args: Json) => Json {
+  if (!Object.hasOwn(stubs, tool)) {
+    throw new Error(`Missing stub for tool "${tool}"`);
+  }
+  const stub = stubs[tool];
+  if (stub === undefined) {
+    throw new Error(`Missing stub for tool "${tool}"`);
+  }
+  return stub;
+}
+
 export function assertReplay(exec: Executable, fixtureArgs: FixtureArgs): ReplayReport {
   const fingerprint = fingerprintOf(exec.steps);
   if (fingerprint !== exec.fingerprint) {
     throw new Error("Fingerprint mismatch");
   }
-  const outputs: Json[] = [];
-  for (const step of exec.steps) {
-    const stub = fixtureArgs.stubs[step.tool];
-    if (stub === undefined) {
-      throw new Error(`Missing stub for tool "${step.tool}"`);
-    }
-    outputs.push(stub(step.args));
-  }
+  const bound = exec.steps.map((step) => ({
+    args: step.args,
+    stub: stubFor(fixtureArgs.stubs, step.tool),
+  }));
+  const outputs = bound.map(({ args, stub }) => stub(args));
   if (!outputsEqual(outputs, fixtureArgs.expectedOutputs)) {
     throw new Error("Replay outputs do not match expectedOutputs");
   }
